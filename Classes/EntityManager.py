@@ -2,6 +2,7 @@ import pygame
 import random
 from pygame import Rect
 
+
 class EntityManager:
 
     def __init__(self, HEIGHT, WIDTH):
@@ -36,7 +37,7 @@ class EntityManager:
 
         # normalize distance
         max_z = 3000
-        depth = max(0, min(1, 1 - (z / max_z)))
+        depth = max(0, 1 - (z / max_z))
 
         # perspective curve (same idea as your road)
         p = depth * depth
@@ -44,9 +45,12 @@ class EntityManager:
         y = horizon_y + (bottom - horizon_y) * p
         scale = 0.2 + p * 1.8
 
-        return y, scale
+        return y, scale, p
 
-    def update(self, dt, playerLane, playerIsJumping):
+    def update(self, dt, playerLane, playerIsJumping, ground_speed):
+        # Ground moves 3000 Z units every 15 full segments.
+        # So ground speed in Z units per frame = (3000 / 15) * (ground_speed / dt).
+        self.speed = (3000 / 15) * (ground_speed / dt)
 
         # spawn logic
         self.spawn_timer -= dt
@@ -61,8 +65,8 @@ class EntityManager:
 
             o["z"] -= self.speed * dt
 
-            # collision
-            if abs(o["z"]) < 50 and o["lane"] == playerLane:
+            # collision - player depth is approx z=345 based on base_y Math
+            if abs(o["z"] - 345) < 70 and o["lane"] == playerLane:
 
                 if o["type"] == "train":
                     return True
@@ -78,36 +82,50 @@ class EntityManager:
         self.cleanup()
 
     def cleanup(self):
-        self.entities = [o for o in self.entities if o["z"] > -200]
+        self.entities = [o for o in self.entities if o["z"] > -500]
 
-    def draw(self, screen):
+    def draw_bg(self, screen, player_z):
+        filtered_entities = [e for e in self.entities if e["z"] > player_z]
+        self._draw_entities(screen, filtered_entities)
 
-        for o in sorted(self.entities, key=lambda e: e["z"], reverse=True):
+    def draw_fg(self, screen, player_z):
+        filtered_entities = [e for e in self.entities if e["z"] <= player_z]
+        self._draw_entities(screen, filtered_entities)
 
-            x = self.get_lane_x(o["lane"])
-            y, scale = self.project(o["z"])
+    def _draw_entities(self, screen, entity_list):
+        for o in sorted(entity_list, key=lambda e: e["z"], reverse=True):
+
+            y, scale, p = self.project(o["z"])
+            x = self.get_lane_x(o["lane"], p)
 
             if o["type"] == "train":
 
-                w = 80 * scale
-                h = 100 * scale
+                w = 120 * scale
+                h = 160 * scale
                 rect = Rect(x - w / 2, y - h, w, h)
 
                 screen.draw.filled_rect(rect, (0, 0, 255))
 
             elif o["type"] == "barrier":
 
-                w = 60 * scale
-                h = 40 * scale
+                w = 100 * scale
+                h = 60 * scale
                 rect = Rect(x - w / 2, y - h, w, h)
 
                 screen.draw.filled_rect(rect, (255, 165, 0))
 
             elif o["type"] == "coin" and not o["collected"]:
 
-                r = 15 * scale
+                r = 20 * scale
                 screen.draw.filled_circle((x, y - r), r, (255, 215, 0))
 
-    def get_lane_x(self, lane):
-        lane_width = 80
-        return (self.WIDTH / 2) + (lane - 1) * lane_width
+    def get_lane_x(self, lane, p):
+        center_x = self.WIDTH / 2
+
+        road_bottom_w = self.WIDTH * 0.6
+        road_top_w = self.WIDTH * 0.1
+
+        current_road_w = road_top_w + (road_bottom_w - road_top_w) * p
+        lane_width = current_road_w / 3
+
+        return center_x + (lane - 1) * lane_width

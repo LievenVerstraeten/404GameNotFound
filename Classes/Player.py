@@ -3,6 +3,7 @@
 
 import pygame
 from pygame import Rect
+from Classes.AnimationManager import AnimationManager
 
 
 class Player:
@@ -27,6 +28,8 @@ class Player:
         self.is_Jumping = False  # no double jump check
         self.base_y = HEIGHT * 0.87
 
+        # animation
+        self.anim_manager = AnimationManager("images/Character3SpriteSheet.png", 4)
 
     def move_left(self):
         if self.current_lane > 0:
@@ -41,8 +44,10 @@ class Player:
             self.is_Jumping = True
             self.y_velocity = self.jump_power
 
-
     def update(self):
+        # update animation ticks
+        self.anim_manager.update(1 / 60)
+
         # gravity when jumping
         if self.is_Jumping:
             self.y_offset += self.y_velocity
@@ -53,7 +58,6 @@ class Player:
                 self.y_offset = 0
                 self.is_Jumping = False
                 self.y_velocity = 0
-
 
     def draw(self, screen):
         # center_x = self.WIDTH / 2
@@ -121,22 +125,23 @@ class Player:
         # Our Y position is the base_y minus any jump offset
         draw_y = self.base_y - self.y_offset
 
-        # Draw the body (Rectangle)
-        # Center the rectangle horizontally on draw_x, and sit the bottom on draw_y
-        body_rect = Rect(draw_x - (self.player_width / 2), draw_y - self.player_height, self.player_width, self.player_height)
-        screen.draw.filled_rect(body_rect, self.tshirt)
+        # Get frame
+        frame = self.anim_manager.get_current_image()
 
-        # Draw the head (Circle) on top of the body
-        head_radius = self.player_width / 1.5
-        head_y = draw_y - self.player_height - (head_radius * 0.5)
+        # Scale the frame statically
+        scaled_frame = pygame.transform.scale(frame, (int(self.player_width * 1.5), int(self.player_height * 1.5)))
 
-        # Pygame zero's filled_circle takes an (x,y) tuple for center and a radius
-        screen.draw.filled_circle((draw_x, head_y), head_radius, self.skin)
+        frame_rect = scaled_frame.get_rect()
+        frame_rect.centerx = draw_x
+        frame_rect.bottom = draw_y
 
+        # Blit using Pygame zero's surface directly
+        screen.surface.blit(scaled_frame, frame_rect.topleft)
 
-    def getLane (self):
+    def getLane(self):
         return self.current_lane
-    def getIsJumping (self):
+
+    def getIsJumping(self):
         return self.is_Jumping
 
     def reset(self):

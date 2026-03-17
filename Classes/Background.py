@@ -4,32 +4,31 @@ from pygame import Rect
 # Colors:
 SKYBLUE = (135, 206, 235)
 GRASS = (34, 139, 34)
-TRACK_COLORS = [(120, 120, 120), (100, 100, 100)]
+TRACK_COLORS = [(120, 120, 120), (100, 100, 100)]  # Dark gray and light gray
+
 
 class Background:
-    HEIGHT = 0
-    WIDTH = 0
-    move_offset = 0
-    prev_move_offset = 0
-    color_offset = 0
-
     def __init__(self, HEIGHT, WIDTH):
         self.HEIGHT = HEIGHT
         self.WIDTH = WIDTH
+        self.move_offset = 0
+        self.absolute_offset = 0
+        self.prev_offset = 0
 
     def update(self, new_offset):
+        # Detect wrap-around to increment our absolute color offset
+        if new_offset < self.prev_offset:
+            self.absolute_offset += 1
+        self.prev_offset = new_offset
         self.move_offset = new_offset
-        if self.prev_move_offset > new_offset:
-            self.color_offset += 1
-        self.prev_move_offset = new_offset
 
-    # drawing the road.
     def draw(self, screen):
         # Road Variables:
         horizon_y = self.HEIGHT * 0.4
         road_top_w = self.WIDTH * 0.1  # Narrow road at the horizon
         road_bottom_w = self.WIDTH * 0.6  # Wide road at the bottom of the screen
         center_x = self.WIDTH / 2
+
         # Drawing the background:
         sky_rect = Rect(0, 0, self.WIDTH, horizon_y)
         screen.draw.filled_rect(sky_rect, SKYBLUE)
@@ -40,11 +39,11 @@ class Background:
         # Draw alternating road segments
         segments = 15
         for i in range(segments):
-            # calculating depth, 0.0 == horizon, 1.0 is bottom of screen
+            # Calculate depth (0.0 at horizon, 1.0 at bottom of screen)
             depth_start = (i + self.move_offset) / segments
             depth_end = (i + 1 + self.move_offset) / segments
 
-            # stopping all drawing at the bottom of the screen
+            # Don't draw past the camera
             if depth_start >= 1.0:
                 continue
             if depth_end > 1.0:
@@ -71,5 +70,13 @@ class Background:
             ]
 
             # Alternate colors seamlessly based on index and the wrap-around offset
-            color_idx = (i + self.color_offset) % 2
+            color_idx = (i + self.absolute_offset) % 2
             pygame.draw.polygon(screen.surface, TRACK_COLORS[color_idx], pts)
+
+        # Draw lane dividers (vertical lines)
+        pygame.draw.line(screen.surface, (255, 255, 255),
+                         (center_x - road_top_w / 6, horizon_y),
+                         (center_x - road_bottom_w / 6, self.HEIGHT), 3)  # Left divider
+        pygame.draw.line(screen.surface, (255, 255, 255),
+                         (center_x + road_top_w / 6, horizon_y),
+                         (center_x + road_bottom_w / 6, self.HEIGHT), 3)  # Right divider
