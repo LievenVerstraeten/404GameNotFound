@@ -2,10 +2,14 @@
 HeadController – real-time webcam head-pose input for accessibility.
 
 Controls:
-  Turn head LEFT   → move lane left
-  Turn head RIGHT  → move lane right
-  Nod DOWN         → jump  (nod again while airborne = double jump)
-  Open mouth wide  → shoot coin at boss
+  Head in LEFT third   → lane 0 (left)
+  Head in CENTER third → lane 1 (center)
+  Head in RIGHT third  → lane 2 (right)
+  Nod DOWN             → jump  (nod again while airborne = double jump)
+  Open mouth wide      → shoot coin at boss
+
+The screen is divided into 3 equal horizontal lanes.  Wherever the nose
+centre sits determines the target lane directly — no threshold turning needed.
 
 The background thread captures + processes every frame and stores an
 annotated preview (numpy RGB) that the game renders as a live corner feed.
@@ -17,11 +21,14 @@ import threading
 import time
 
 # ── Tunable thresholds ────────────────────────────────────────────────────────
-YAW_THRESHOLD   = 0.06   # normalised nose-x offset for lane change
 PITCH_THRESHOLD = 0.05   # normalised nose-y offset for down-nod
 MOUTH_THRESHOLD = 0.028  # normalised lip-gap for shoot
-DEBOUNCE_YAW    = 0.30   # s before same direction fires again
 DEBOUNCE_NOD    = 0.28   # s before next nod fires
+
+# Lane zone boundaries (nose.x is 0=left … 1=right in the mirrored frame)
+LANE_BOUNDARY_L = 1 / 3  # left-zone / center-zone divider
+LANE_BOUNDARY_R = 2 / 3  # center-zone / right-zone divider
+LANE_HYSTERESIS = 0.04   # dead-band around each boundary to prevent jitter
 
 
 class HeadController:
@@ -33,7 +40,7 @@ class HeadController:
 
         # ── Events (written by thread, consumed by game frame) ────────────────
         self._lock           = threading.Lock()
-        self._lane_event     = 0      # -1 | 0 | +1
+        self._target_lane    = None   # 0 | 1 | 2, or None when no change
         self._pending_jumps  = 0
         self._pending_shoot  = False
 
@@ -41,8 +48,7 @@ class HeadController:
         self._preview_frame  = None   # updated every processed webcam frame
 
         # ── Internal state ────────────────────────────────────────────────────
-        self._last_yaw_dir  = 0
-        self._last_yaw_time = 0.0
+        self._current_zone  = 1      # last committed zone (0/1/2); start center
         self._in_pitch_down = False
         self._last_nod_time = 0.0
         self._in_mouth_open = False
@@ -82,11 +88,12 @@ class HeadController:
 
     # ── Event consumers (call each game frame) ────────────────────────────────
 
-    def consume_lane_change(self):
+    def consume_target_lane(self):
+        """Return the target lane (0/1/2) if the zone changed, else None."""
         with self._lock:
-            d = self._lane_event
-            self._lane_event = 0
-            return d
+            t = self._target_lane
+            self._target_lane = None
+            return t
 
     def consume_jump(self):
         with self._lock:
@@ -198,15 +205,15 @@ class HeadController:
                 continue
 
             lm        = result.face_landmarks[0] if result.face_landmarks else None
-            yaw       = 0.0
+            nose_x    = 0.5
             pitch     = 0.0
             mouth_gap = 0.0
 
             if lm is not None:
-                yaw, pitch, mouth_gap = self._compute_pose(lm)
-                self._update_events(yaw, pitch, mouth_gap)
+                nose_x, pitch, mouth_gap = self._compute_pose(lm)
+                self._update_events(nose_x, pitch, mouth_gap)
 
-            annotated = self._annotate(frame, lm, yaw, pitch, mouth_gap, cv2)
+            annotated = self._annotate(frame, lm, nose_x, pitch, mouth_gap, cv2)
             rgb_ann   = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
 
             with self._lock:
@@ -221,39 +228,33 @@ class HeadController:
         nose      = lm[1]
         forehead  = lm[10]
         chin      = lm[152]
-        l_cheek   = lm[234]
-        r_cheek   = lm[454]
         upper_lip = lm[13]
         lower_lip = lm[14]
 
-        face_w = abs(r_cheek.x - l_cheek.x)
         face_h = abs(forehead.y - chin.y)
-        if face_w < 1e-5 or face_h < 1e-5:
-            return 0.0, 0.0, 0.0
+        if face_h < 1e-5:
+            return 0.5, 0.0, 0.0
 
-        fcx   = (l_cheek.x + r_cheek.x) / 2
-        fcy   = (forehead.y + chin.y)    / 2
-        yaw   = (nose.x - fcx) / face_w   # + = head right
-        pitch = (nose.y - fcy) / face_h   # + = head down
-        mouth = abs(upper_lip.y - lower_lip.y) / face_h
-        return yaw, pitch, mouth
+        fcy    = (forehead.y + chin.y) / 2
+        nose_x = nose.x                            # 0=left … 1=right (mirrored)
+        pitch  = (nose.y - fcy) / face_h           # + = head down
+        mouth  = abs(upper_lip.y - lower_lip.y) / face_h
+        return nose_x, pitch, mouth
 
     # ── Event generation ──────────────────────────────────────────────────────
 
-    def _update_events(self, yaw, pitch, mouth_gap):
+    def _update_events(self, nose_x, pitch, mouth_gap):
         now = time.monotonic()
         with self._lock:
-            # Lane change
-            if   yaw >  YAW_THRESHOLD: new_dir =  1
-            elif yaw < -YAW_THRESHOLD: new_dir = -1
-            else:                      new_dir  =  0
-
-            if (new_dir != 0
-                    and new_dir != self._last_yaw_dir
-                    and now - self._last_yaw_time > DEBOUNCE_YAW):
-                self._lane_event    = new_dir
-                self._last_yaw_time = now
-            self._last_yaw_dir = new_dir
+            # ── Lane zone (3-lane position mapping) ──────────────────────────
+            z = self._current_zone
+            if   z == 1 and nose_x < LANE_BOUNDARY_L - LANE_HYSTERESIS: z = 0
+            elif z == 1 and nose_x > LANE_BOUNDARY_R + LANE_HYSTERESIS: z = 2
+            elif z == 0 and nose_x > LANE_BOUNDARY_L + LANE_HYSTERESIS: z = 1
+            elif z == 2 and nose_x < LANE_BOUNDARY_R - LANE_HYSTERESIS: z = 1
+            if z != self._current_zone:
+                self._current_zone = z
+                self._target_lane  = z
 
             # Down-nod → jump
             if pitch > PITCH_THRESHOLD and not self._in_pitch_down:
@@ -273,48 +274,36 @@ class HeadController:
 
     # ── Frame annotation ──────────────────────────────────────────────────────
 
-    def _annotate(self, frame, lm, yaw, pitch, mouth_gap, cv2):
+    def _annotate(self, frame, lm, nose_x, pitch, mouth_gap, cv2):
         h, w = frame.shape[:2]
         out  = frame.copy()
 
+        # 3-lane zone dividers (always drawn)
+        x_l = int(LANE_BOUNDARY_L * w)
+        x_r = int(LANE_BOUNDARY_R * w)
+        zone_cols = [(60, 60, 60), (60, 60, 60), (60, 60, 60)]
+        if lm is not None:
+            zone_cols[self._current_zone] = (0, 200, 80)
+        for xi in (x_l, x_r):
+            cv2.line(out, (xi, 0), (xi, h), (100, 100, 100), 1)
+        lane_labels = ["L", "C", "R"]
+        zone_xs = [x_l // 2, (x_l + x_r) // 2, (x_r + w) // 2]
+        for i, (lx, col) in enumerate(zip(zone_xs, zone_cols)):
+            cv2.putText(out, lane_labels[i], (lx - 6, 18),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, col, 2)
+
         if lm is not None:
             # Nose dot
-            nx = int(lm[1].x * w)
+            nx = int(nose_x * w)
             ny = int(lm[1].y * h)
-            cv2.circle(out, (nx, ny), 7,  (0, 0, 0),       -1)
-            cv2.circle(out, (nx, ny), 5,  (80, 255, 100),   -1)
-
-            # Face centre crosshair
-            fcx = int((lm[234].x + lm[454].x) / 2 * w)
-            fcy = int((lm[10].y  + lm[152].y) / 2 * h)
-            cv2.line(out, (fcx - 12, fcy), (fcx + 12, fcy), (180, 180, 180), 1)
-            cv2.line(out, (fcx, fcy - 12), (fcx, fcy + 12), (180, 180, 180), 1)
-
-            # Threshold zone rectangle (visual reference)
-            tw = int(YAW_THRESHOLD   * w * 2)
-            th = int(PITCH_THRESHOLD * h * 2)
-            cv2.rectangle(out,
-                          (fcx - tw // 2, fcy - th // 2),
-                          (fcx + tw // 2, fcy + th // 2),
-                          (80, 80, 80), 1)
-
-            # Yaw arrow
-            if yaw > YAW_THRESHOLD:
-                cv2.arrowedLine(out, (w - 60, h // 2), (w - 10, h // 2),
-                                (0, 255, 100), 3, tipLength=0.4)
-                cv2.putText(out, "RIGHT", (w - 65, h // 2 - 12),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 100), 1)
-            elif yaw < -YAW_THRESHOLD:
-                cv2.arrowedLine(out, (60, h // 2), (10, h // 2),
-                                (0, 255, 100), 3, tipLength=0.4)
-                cv2.putText(out, "LEFT", (12, h // 2 - 12),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 100), 1)
+            cv2.circle(out, (nx, ny), 7, (0, 0, 0),     -1)
+            cv2.circle(out, (nx, ny), 5, (80, 255, 100), -1)
 
             # Pitch / nod indicator
             if pitch > PITCH_THRESHOLD:
-                cv2.arrowedLine(out, (fcx, 15), (fcx, 45),
+                cv2.arrowedLine(out, (nx, 30), (nx, 55),
                                 (0, 220, 255), 3, tipLength=0.4)
-                cv2.putText(out, "NOD", (fcx - 18, 14),
+                cv2.putText(out, "NOD", (nx - 18, 28),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 255), 1)
 
             # Mouth indicator (lips landmarks 13/14)
