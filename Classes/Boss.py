@@ -135,7 +135,7 @@ class Boss:
 
     # ── Drawing ───────────────────────────────────────────────────────────────
 
-    def draw(self, screen, px_text_fn, font_fn, colorblind=False):
+    def draw(self, screen, px_text_fn, font_fn, colorblind=0):
         if not self.active:
             return
         surf = screen.surface
@@ -228,9 +228,11 @@ class Boss:
             pf  = font_fn(sz)
 
             is_one = p['char'] == '1'
-            if   colorblind == 2:  # monochrome: white "1", gray "0"
+            if colorblind == 4:    # monochrome: white "1", gray "0"
                 pc = (240, 240, 240) if is_one else (140, 140, 140)
-            elif colorblind == 1:  # color-safe: yellow "1", blue "0"
+            elif colorblind == 3:  # tritanopia: red "1", cyan "0"
+                pc = (230,  40,  40) if is_one else ( 40, 230, 230)
+            elif colorblind >= 1:  # protanopia/deuteranopia: yellow "1", blue "0"
                 pc = (255, 220,   0) if is_one else ( 30, 100, 255)
             else:                  # default: red "1", cyan "0"
                 pc = (255,  60,  60) if is_one else ( 60, 200, 255)
@@ -246,8 +248,14 @@ class Boss:
             if colorblind > 0:
                 mk_sz = max(6, int(sz * 0.38))
                 mk_x, mk_y = int(px), oy - mk_sz - 4
-                mk_col1 = (240, 240, 240) if colorblind == 2 else (255, 220,   0)
-                mk_col0 = (160, 160, 160) if colorblind == 2 else ( 30, 100, 255)
+                if colorblind == 4:
+                    mk_col1 = (240, 240, 240); mk_col0 = (140, 140, 140)
+                elif colorblind == 3:
+                    mk_col1 = (230,  40,  40); mk_col0 = ( 40, 230, 230)
+                elif colorblind >= 1:
+                    mk_col1 = (255, 220,   0); mk_col0 = ( 30, 100, 255)
+                else:
+                    mk_col1 = (255,  60,  60); mk_col0 = ( 60, 200, 255)
                 if is_one:
                     # ▲ triangle
                     pts = [(mk_x, mk_y), (mk_x - mk_sz, mk_y + mk_sz),

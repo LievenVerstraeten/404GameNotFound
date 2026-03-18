@@ -104,18 +104,27 @@ def _px_text(surf, text, pos, size, color,
 
 
 # ── Pixel-art UI panels & buttons ─────────────────────────────────────────────
-def _draw_panel(surf, rect,
-                bg=(12, 12, 30, 215), border=(255, 220, 50), bw=3):
+def get_ui_colors():
+    m = settings.colorblind_mode
+    if m == 4: return {'panel_bg': (15,15,15,215), 'panel_border': (200,200,200), 'btn_bg': (30,30,30,220), 'btn_bord': (150,150,150), 'btn_tcol': (200,200,200), 'btn_hbg': (60,60,60,240), 'btn_hbord': (255,255,255), 'btn_htcol': (255,255,255), 'title_404': (255,255,255), 'title_404_shadow': (100,100,100), 'title_sub': (200,200,200), 'text_main': (220,220,220), 'text_dim': (150,150,150), 'text_highlight': (255,255,255), 'hud_score': (255,255,255), 'hud_progress': (180,180,180), 'hud_border': (200,200,200)}
+    elif m in (1,2): return {'panel_bg': (10,25,50,215), 'panel_border': (255,220,50), 'btn_bg': (15,40,80,220), 'btn_bord': (100,150,255), 'btn_tcol': (200,220,255), 'btn_hbg': (30,70,130,240), 'btn_hbord': (180,210,255), 'btn_htcol': (255,255,255), 'title_404': (255,220,50), 'title_404_shadow': (100,80,0), 'title_sub': (100,180,255), 'text_main': (220,220,220), 'text_dim': (150,170,200), 'text_highlight': (255,220,50), 'hud_score': (255,220,50), 'hud_progress': (100,150,255), 'hud_border': (255,220,50)}
+    elif m == 3: return {'panel_bg': (20,5,5,215), 'panel_border': (255,70,70), 'btn_bg': (40,10,10,220), 'btn_bord': (200,50,50), 'btn_tcol': (255,150,150), 'btn_hbg': (70,20,20,240), 'btn_hbord': (255,100,100), 'btn_htcol': (255,200,200), 'title_404': (50,255,255), 'title_404_shadow': (0,100,100), 'title_sub': (255,80,80), 'text_main': (220,220,220), 'text_dim': (200,150,150), 'text_highlight': (50,255,255), 'hud_score': (50,255,255), 'hud_progress': (255,80,80), 'hud_border': (50,255,255)}
+    else: return {'panel_bg': (12,12,30,215), 'panel_border': (255,220,50), 'btn_bg': (25,20,5,220), 'btn_bord': (185,152,28), 'btn_tcol': (215,190,75), 'btn_hbg': (55,42,8,240), 'btn_hbord': (255,235,90), 'btn_htcol': (255,248,140), 'title_404': (255,70,70), 'title_404_shadow': (80,0,0), 'title_sub': (255,220,50), 'text_main': (215,215,215), 'text_dim': (140,140,140), 'text_highlight': (90,210,255), 'hud_score': (255,240,80), 'hud_progress': (255,210,40), 'hud_border': (160,130,18)}
+
+def _draw_panel(surf, rect, bg=None, border=None, bw=3):
+    c = get_ui_colors()
+    if bg is None: bg = c['panel_bg']
+    if border is None: border = c['panel_border']
     panel = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
     panel.fill(bg)
     surf.blit(panel, rect.topleft)
     pygame.draw.rect(surf, border, rect, bw)
 
-
 def _draw_button(surf, rect, label, size=24, hover=False):
-    bg   = (55, 42, 8,  240) if hover else (25, 20, 5,  220)
-    bord = (255, 235, 90)    if hover else (185, 152, 28)
-    tcol = (255, 248, 140)   if hover else (215, 190, 75)
+    c = get_ui_colors()
+    bg   = c['btn_hbg'] if hover else c['btn_bg']
+    bord = c['btn_hbord'] if hover else c['btn_bord']
+    tcol = c['btn_htcol'] if hover else c['btn_tcol']
     _draw_panel(surf, rect, bg=bg, border=bord, bw=3)
     _px_text(surf, label, (rect.centerx, rect.centery), size, tcol, center=True)
 
@@ -242,7 +251,7 @@ def on_mouse_down(pos):
         if _btn('back').collidepoint(pos):       game_state = "menu"
     elif game_state == "settings":
         if   _btn('back').collidepoint(pos):       game_state = "menu"
-        elif _btn('colorblind').collidepoint(pos): settings.colorblind_mode = (settings.colorblind_mode + 1) % 3
+        elif _btn('colorblind').collidepoint(pos): settings.colorblind_mode = (settings.colorblind_mode + 1) % 5
         elif _btn('headctrl').collidepoint(pos) and head_ctrl.available:
             head_ctrl.toggle()
     elif game_state == "game_over":
@@ -431,30 +440,32 @@ def _draw_hud():
     pad  = int(HEIGHT * 0.018)
     hs   = _heart_img.get_width() if _heart_img else int(HEIGHT * 0.135)
     gap  = int(hs * 0.25)
+    c    = get_ui_colors()
 
     # Score — 3× font size
-    _px_text(surf, f"SCORE  {score:07d}", (pad, pad), 102, (255, 240, 80))
+    _px_text(surf, f"SCORE  {score:07d}", (pad, pad), 102, c['hud_score'])
 
     # Coin counter + progress bar — all 3× larger
     coin_y = pad + 114
     coin_r = int(HEIGHT * 0.039)
     _draw_coin_icon(surf, pad + coin_r, coin_y + coin_r, coin_r)
     _px_text(surf, f" {collected_coins:02d}/{settings.COIN_BOOST_COST}   UP = BOOST",
-             (pad + coin_r * 2 + 4, coin_y), 60, (255, 210, 55))
+             (pad + coin_r * 2 + 4, coin_y), 60, c['hud_score'])
 
     bar_w  = int(WIDTH * 0.27)
     bar_h  = 15
     bar_y  = coin_y + 72
     fill   = int(bar_w * min(1.0, collected_coins / settings.COIN_BOOST_COST))
-    pygame.draw.rect(surf, (55, 44, 8),   (pad, bar_y, bar_w, bar_h))
-    pygame.draw.rect(surf, (255, 210, 40),(pad, bar_y, fill,  bar_h))
-    pygame.draw.rect(surf, (160, 130, 18),(pad, bar_y, bar_w, bar_h), 2)
+    pygame.draw.rect(surf, c['panel_bg'], (pad, bar_y, bar_w, bar_h))
+    pygame.draw.rect(surf, c['hud_progress'], (pad, bar_y, fill,  bar_h))
+    pygame.draw.rect(surf, c['hud_border'], (pad, bar_y, bar_w, bar_h), 2)
 
     # Active boost labels — colors vary by accessibility mode
     boost_label_y = bar_y + bar_h + 21
-    if   settings.colorblind_mode == 1: key_col, speed_col = (255, 165, 0),   ( 30, 100, 255)  # orange / blue
-    elif settings.colorblind_mode == 2: key_col, speed_col = (240, 240, 240), (160, 160, 160)  # white / gray
-    else:                      key_col, speed_col = (200,  80, 255), ( 80, 210, 255)  # purple / cyan
+    if   settings.colorblind_mode == 4: key_col, speed_col = (240, 240, 240), (160, 160, 160)
+    elif settings.colorblind_mode == 3: key_col, speed_col = (255, 100, 100), ( 80, 255, 255)
+    elif settings.colorblind_mode >= 1: key_col, speed_col = (255, 165, 0),   ( 30, 200, 255)
+    else:                               key_col, speed_col = (200,  80, 255), ( 80, 210, 255)
     if boost_active:
         secs = int(boost_timer) + 1
         _px_text(surf, f"KEY x{score_multiplier}  {secs}s",
@@ -490,9 +501,10 @@ def _draw_hit_flash():
         a     = int(110 * min(1.0, _hit_flash_timer / (settings.INVINCIBLE_DURATION * 0.55)))
         flash = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         # Accessibility flash colours
-        if   settings.colorblind_mode == 1: flash.fill((0,   80, 210, a))   # blue
-        elif settings.colorblind_mode == 2: flash.fill((220, 220, 220, a))  # white
-        else:                      flash.fill((210,   0,   0, a))  # red
+        if   settings.colorblind_mode == 4: flash.fill((220, 220, 220, a))  # white
+        elif settings.colorblind_mode == 3: flash.fill((210,  40,   0, a))  # tritanopia uses red
+        elif settings.colorblind_mode >= 1: flash.fill((  0, 120, 210, a))  # blue
+        else:                               flash.fill((210,   0,   0, a))  # red
         screen.surface.blit(flash, (0, 0))
 
 
@@ -541,39 +553,41 @@ def _draw_head_preview():
 def _draw_menu():
     surf = screen.surface
     cx   = WIDTH // 2
+    c = get_ui_colors()
 
     # Title card
     tp = pygame.Rect(cx - int(WIDTH * 0.27), int(HEIGHT * 0.10),
                      int(WIDTH * 0.54), int(HEIGHT * 0.24))
-    _draw_panel(surf, tp, bg=(8, 8, 22, 215), border=(255, 220, 50), bw=4)
-    _px_text(surf, "404",            (cx, int(HEIGHT * 0.165)), 78, (255, 70, 70),
-             shadow_col=(80, 0, 0), center=True)
-    _px_text(surf, "GAME NOT FOUND", (cx, int(HEIGHT * 0.255)), 30, (255, 220, 50),
+    _draw_panel(surf, tp, bg=c['panel_bg'], border=c['panel_border'], bw=4)
+    _px_text(surf, "404",            (cx, int(HEIGHT * 0.165)), 78, c['title_404'],
+             shadow_col=c['title_404_shadow'], center=True)
+    _px_text(surf, "GAME NOT FOUND", (cx, int(HEIGHT * 0.255)), 30, c['title_sub'],
              center=True)
 
     if high_scores:
         _px_text(surf, f"BEST  {high_scores[0]:07d}", (cx, int(HEIGHT * 0.325)),
-                 22, (170, 215, 170), center=True)
+                 22, c['text_main'], center=True)
 
     _draw_button(surf, _btn('play'),     "  PLAY  ",  30)
     _draw_button(surf, _btn('tutorial'), "TUTORIAL",  24)
     _draw_button(surf, _btn('settings'), "SETTINGS",  24)
 
     _px_text(surf, "SPACE  or  click  PLAY  to  start",
-             (cx, int(HEIGHT * 0.91)), 18, (140, 140, 140), center=True)
+             (cx, int(HEIGHT * 0.91)), 18, c['text_dim'], center=True)
 
 
 # ── Tutorial ───────────────────────────────────────────────────────────────────
 def _draw_tutorial():
     surf = screen.surface
     cx   = WIDTH // 2
+    c = get_ui_colors()
 
     panel = pygame.Rect(cx - int(WIDTH * 0.30), int(HEIGHT * 0.06),
                         int(WIDTH * 0.60), int(HEIGHT * 0.80))
-    _draw_panel(surf, panel, bg=(8, 8, 22, 222), bw=4)
+    _draw_panel(surf, panel, bg=c['panel_bg'], border=c['panel_border'], bw=4)
 
     ty = int(HEIGHT * 0.10)
-    _px_text(surf, "HOW  TO  PLAY", (cx, ty), 36, (255, 220, 50), center=True)
+    _px_text(surf, "HOW  TO  PLAY", (cx, ty), 36, c['title_sub'], center=True)
     ty += int(HEIGHT * 0.08)
 
     lx = cx - int(WIDTH * 0.26)
@@ -601,26 +615,27 @@ def _draw_tutorial():
     for label, desc in rows:
         if not label:
             ty += int(HEIGHT * 0.022);  continue
-        _px_text(surf, label, (lx, ty), 21, (90, 210, 255))
-        _px_text(surf, desc,  (dx, ty), 21, (215, 215, 215))
+        _px_text(surf, label, (lx, ty), 21, c['text_highlight'])
+        _px_text(surf, desc,  (dx, ty), 21, c['text_main'])
         ty += int(HEIGHT * 0.050)
 
     _draw_button(surf, _btn('back'), "BACK", 24)
     _px_text(surf, "ESC or SPACE to go back",
-             (cx, int(HEIGHT * 0.93)), 17, (120, 120, 120), center=True)
+             (cx, int(HEIGHT * 0.93)), 17, c['text_dim'], center=True)
 
 
 # ── Settings ───────────────────────────────────────────────────────────────────
 def _draw_settings():
     surf = screen.surface
     cx   = WIDTH // 2
+    c = get_ui_colors()
 
     panel = pygame.Rect(cx - int(WIDTH * 0.26), int(HEIGHT * 0.10),
                         int(WIDTH * 0.52), int(HEIGHT * 0.65))
-    _draw_panel(surf, panel, bg=(8, 8, 22, 222), bw=4)
+    _draw_panel(surf, panel, bg=c['panel_bg'], border=c['panel_border'], bw=4)
 
     ty = int(HEIGHT * 0.145)
-    _px_text(surf, "SETTINGS", (cx, ty), 36, (255, 220, 50), center=True)
+    _px_text(surf, "SETTINGS", (cx, ty), 36, c['title_sub'], center=True)
     ty += int(HEIGHT * 0.09)
 
     lx = cx - int(WIDTH * 0.22)
@@ -639,8 +654,8 @@ def _draw_settings():
     for label, val in rows:
         if not label:
             ty += int(HEIGHT * 0.022);  continue
-        _px_text(surf, label + ":", (lx, ty), 21, (130, 200, 255))
-        _px_text(surf, val,         (vx, ty), 21, (215, 210, 175))
+        _px_text(surf, label + ":", (lx, ty), 21, c['text_highlight'])
+        _px_text(surf, val,         (vx, ty), 21, c['text_main'])
         ty += int(HEIGHT * 0.053)
 
     # Head control toggle
@@ -649,38 +664,47 @@ def _draw_settings():
         hc_desc  = ("Nod L/R = lane    Nod down = jump    Open mouth = shoot"
                     if head_ctrl.enabled else
                     "Click to enable webcam head tracking")
-        hc_col   = (80, 255, 160) if head_ctrl.enabled else (180, 180, 180)
+        hc_col   = (80, 255, 160) if head_ctrl.enabled else c['text_dim']
     else:
         hc_label = "HEAD CONTROL:  N/A"
         hc_desc  = "pip install mediapipe opencv-python  to enable"
-        hc_col   = (120, 80, 80)
+        hc_col   = c['title_404']
     _draw_button(surf, _btn('headctrl'), hc_label, 20,
                  hover=head_ctrl.enabled)
     _px_text(surf, hc_desc,
              (cx, _btn('headctrl').bottom + 5), 14, hc_col, center=True)
 
-    # Colorblind toggle — cycles OFF → COLOR-SAFE → MONO
-    _CB_LABELS = ["COLORBLIND:  OFF", "COLORBLIND:  COLOR-SAFE", "COLORBLIND:  MONO"]
+    # Colorblind toggle — cycles 5 modes
+    _CB_LABELS = [
+        "COLORBLIND:  OFF",
+        "COLORBLIND:  PROTANOPIA",
+        "COLORBLIND:  DEUTERANOPIA",
+        "COLORBLIND:  TRITANOPIA",
+        "COLORBLIND:  MONO"
+    ]
     _CB_DESCS  = [
         "Normal colours",
-        "Yellow / Blue  +  shapes  +  numeric lives",
-        "White / Grey  +  shapes  +  numeric lives",
+        "Red-blind: Blue/Yellow contrast",
+        "Green-blind: Blue/Yellow contrast",
+        "Blue-blind: Red/Cyan contrast",
+        "White/Grey  +  shapes  +  numeric",
     ]
-    _CB_COLS   = [(160, 160, 160), (255, 200, 50), (220, 220, 220)]
+    cb_desc_col = c['text_highlight'] if settings.colorblind_mode > 0 else c['text_dim']
     _draw_button(surf, _btn('colorblind'), _CB_LABELS[settings.colorblind_mode], 22,
                  hover=(settings.colorblind_mode > 0))
     _px_text(surf, _CB_DESCS[settings.colorblind_mode],
-             (cx, _btn('colorblind').bottom + 6), 15, _CB_COLS[settings.colorblind_mode], center=True)
+             (cx, _btn('colorblind').bottom + 6), 15, cb_desc_col, center=True)
 
     _draw_button(surf, _btn('back'), "BACK", 24)
     _px_text(surf, "ESC or SPACE to go back",
-             (cx, int(HEIGHT * 0.93)), 17, (120, 120, 120), center=True)
+             (cx, int(HEIGHT * 0.93)), 17, c['text_dim'], center=True)
 
 
 # ── Game over ──────────────────────────────────────────────────────────────────
 def _draw_game_over():
     surf = screen.surface
     cx   = WIDTH // 2
+    c = get_ui_colors()
 
     overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 155))
@@ -688,29 +712,29 @@ def _draw_game_over():
 
     panel = pygame.Rect(cx - int(WIDTH * 0.23), int(HEIGHT * 0.12),
                         int(WIDTH * 0.46), int(HEIGHT * 0.76))
-    _draw_panel(surf, panel, bg=(14, 5, 5, 225), border=(200, 45, 45), bw=4)
+    _draw_panel(surf, panel, bg=c['panel_bg'], border=c['title_404'], bw=4)
 
     _px_text(surf, "GAME  OVER",
-             (cx, int(HEIGHT * 0.195)), 62, (255, 50, 50),
-             shadow_col=(80, 0, 0), center=True)
+             (cx, int(HEIGHT * 0.195)), 62, c['title_404'],
+             shadow_col=c['title_404_shadow'], center=True)
 
     _px_text(surf, f"SCORE   {score:07d}",
-             (cx, int(HEIGHT * 0.310)), 30, (255, 240, 80), center=True)
+             (cx, int(HEIGHT * 0.310)), 30, c['hud_score'], center=True)
     _px_text(surf, f"COINS   {collected_coins:02d}",
-             (cx, int(HEIGHT * 0.375)), 24, (255, 210, 50), center=True)
+             (cx, int(HEIGHT * 0.375)), 24, c['title_sub'], center=True)
 
     _px_text(surf, "HIGH  SCORES",
-             (cx, int(HEIGHT * 0.440)), 25, (255, 200, 50), center=True)
+             (cx, int(HEIGHT * 0.440)), 25, c['title_sub'], center=True)
 
     for i, s in enumerate(high_scores[:5]):
-        col = (255, 240, 80) if i == 0 else (195, 195, 175)
+        col = c['hud_score'] if i == 0 else c['text_main']
         _px_text(surf, f"# {i+1}   {s:07d}",
                  (cx, int(HEIGHT * 0.503) + i * int(HEIGHT * 0.057)),
                  22, col, center=True)
 
     _draw_button(surf, _btn('back'), "PLAY  AGAIN", 24)
     _px_text(surf, "SPACE to restart",
-             (cx, int(HEIGHT * 0.92)), 18, (140, 140, 140), center=True)
+             (cx, int(HEIGHT * 0.92)), 18, c['text_dim'], center=True)
 
 
 pgzrun.go()
