@@ -11,6 +11,6 @@ class Settings:
         self.BOSS_TRIGGER_TIME   = 60.0
 
         # ── User preferences ──────────────────────────────────────────────────
-        # 0 = Off   1 = Color-safe (yellow/blue)   2 = Monochrome
+        # 0 = Off, 1 = Protanopia, 2 = Deuteranopia, 3 = Tritanopia, 4 = Monochrome
         self.colorblind_mode = 0
         self.PIXEL_FONT      = "fonts/PixelifySans.ttf"
