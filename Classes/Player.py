@@ -16,8 +16,8 @@ class Player:
         self._visual_lane = 1.0   # float, lerps toward current_lane for smooth movement
         self.y_offset = 0
         self.y_velocity = 0
-        self.gravity = -1.5
-        self.jump_power = 30
+        self.gravity = -2.5
+        self.jump_power = 38
         self.is_Jumping = False
         self.jumps_remaining = 2  # double-jump: 2 jumps per grounded state
         self.base_y = HEIGHT * 0.87
@@ -28,6 +28,11 @@ class Player:
         # hit flash
         self.hit_timer = 0.0
         self.hit_duration = 0.5  # seconds of red tint after being hit
+
+        # Squash-and-stretch scale factors
+        self._scale_x = 1.0
+        self._scale_y = 1.0
+        self._land_squash = 0.0   # 0-1 timer for landing squash
 
         self.anim_manager = AnimationManager("images/Character3SpriteSheet.png", 4)
 
@@ -44,6 +49,7 @@ class Player:
             self.is_Jumping = True
             self.y_velocity = self.jump_power
             self.jumps_remaining -= 1
+            self._land_squash = 0.0   # cancel any residual landing squash
 
     def trigger_hit(self):
         self.hit_timer = self.hit_duration
@@ -57,15 +63,39 @@ class Player:
         if self.hit_timer > 0:
             self.hit_timer -= 1 / 60
 
+        # ── Squash & stretch ─────────────────────────────────────────────────
         if self.is_Jumping:
-            self.y_offset += self.y_velocity
-            self.y_velocity += self.gravity
+            t = self.y_velocity / self.jump_power   # +1 = just launched, -1 = max fall
+            if t > 0:   # rising — stretch tall
+                sy = 1.0 + t * 0.30
+                sx = 1.0 / sy * 0.90 + 0.10
+            else:       # falling — slight compress
+                sy = max(0.88, 1.0 + t * 0.12)
+                sx = 1.0
+            self._scale_x = sx
+            self._scale_y = sy
+        else:
+            # Landing squash: briefly squish horizontally
+            if self._land_squash > 0:
+                self._land_squash = max(0.0, self._land_squash - dt / 0.12)
+                k = self._land_squash
+                self._scale_x = 1.0 + k * 0.25
+                self._scale_y = 1.0 - k * 0.18
+            else:
+                self._scale_x = 1.0
+                self._scale_y = 1.0
+
+        if self.is_Jumping:
+            scale = dt * 60   # normalise to 60 fps so values stay intuitive
+            self.y_offset  += self.y_velocity * scale
+            self.y_velocity += self.gravity   * scale
 
             if self.y_offset <= 0:
                 self.y_offset = 0
                 self.is_Jumping = False
                 self.y_velocity = 0
                 self.jumps_remaining = 2  # reset on landing
+                self._land_squash = 1.0   # trigger landing squash
 
     def _get_draw_x(self):
         center_x      = self.WIDTH / 2
@@ -95,9 +125,11 @@ class Player:
         pygame.draw.ellipse(shadow_surf, (0, 0, 0, shadow_alpha), (0, 0, shadow_w, shadow_h))
         screen.surface.blit(shadow_surf, (int(draw_x - shadow_w / 2), int(self.base_y - shadow_h // 2)))
 
-        # --- Sprite ---
+        # --- Sprite (with squash & stretch) ---
         frame = self.anim_manager.get_current_image()
-        scaled_frame = pygame.transform.scale(frame, (int(self.player_width * 1.5), int(self.player_height * 1.5)))
+        sw = int(self.player_width  * 1.5 * self._scale_x)
+        sh = int(self.player_height * 1.5 * self._scale_y)
+        scaled_frame = pygame.transform.scale(frame, (max(1, sw), max(1, sh)))
 
         # Red tint when hit (adds to red channel only; keeps transparency intact)
         if self.hit_timer > 0:
@@ -128,3 +160,6 @@ class Player:
         self.is_Jumping    = False
         self.jumps_remaining = 2
         self.hit_timer     = 0.0
+        self._scale_x      = 1.0
+        self._scale_y      = 1.0
+        self._land_squash  = 0.0

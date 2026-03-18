@@ -67,7 +67,7 @@ class Boss:
             'speed': 1400.0 * speed_multiplier,
         })
 
-    def update(self, dt, player_lane, is_invincible):
+    def update(self, dt, player_lane, is_invincible, is_jumping=False):
         """
         Returns one of: 'player_hit' | 'boss_defeated' | None
         Call every frame while game_state == 'playing'.
@@ -104,7 +104,7 @@ class Boss:
         for p in self.projectiles:
             p['z'] -= p['speed'] * dt
             if p['z'] < self.PLAYER_Z + 90 and p['z'] > self.PLAYER_Z - 60:
-                if p['lane'] == player_lane and not is_invincible:
+                if p['lane'] == player_lane and not is_invincible and not is_jumping:
                     result = 'player_hit'
                     continue             # projectile consumed on hit
             if p['z'] > 0:
@@ -157,7 +157,7 @@ class Boss:
         col_g   = max(0,   int(30  - rage * 30))
         txt_col = (col_r, col_g, int(220 * (1.0 - rage * 0.6)))
 
-        label   = f.render("404", False, txt_col)
+        label   = f.render("404", True, txt_col)
         tw, th  = label.get_width(), label.get_height()
         bx      = int(cx - tw // 2)
         by      = int(hz * 0.58 + bob) - th // 2
@@ -178,7 +178,7 @@ class Boss:
                          (bx - pad - 4, by - pad - 4, gw + 8, gh + 8), 2)
 
         # 8-direction black outline then colored "404"
-        dark = f.render("404", False, (0, 0, 0))
+        dark = f.render("404", True, (0, 0, 0))
         ow = 3
         for ddx in range(-ow, ow + 1):
             for ddy in range(-ow, ow + 1):
@@ -235,8 +235,8 @@ class Boss:
             else:                  # default: red "1", cyan "0"
                 pc = (255,  60,  60) if is_one else ( 60, 200, 255)
 
-            ps  = pf.render(p['char'], False, pc)
-            dk  = pf.render(p['char'], False, (0, 0, 0))
+            ps  = pf.render(p['char'], True, pc)
+            dk  = pf.render(p['char'], True, (0, 0, 0))
             ox, oy = int(px - ps.get_width() // 2), int(py - ps.get_height() // 2)
             for ddx, ddy in [(-2,0),(2,0),(0,-2),(0,2),(-2,-2),(2,-2),(-2,2),(2,2)]:
                 surf.blit(dk, (ox + ddx, oy + ddy))

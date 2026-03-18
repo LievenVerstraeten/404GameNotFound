@@ -9,6 +9,7 @@ from Classes.Player import Player
 from Classes.EntityManager import EntityManager
 from Classes.Boss import Boss
 from Classes.HeadController import HeadController
+from Classes.Settings import Settings
 
 x = 0
 y = 30
@@ -19,17 +20,8 @@ WIDTH  = get_monitors()[0].width
 HEIGHT = get_monitors()[0].height - y
 TITLE  = "404GameNotFound"
 
-# ── Constants ──────────────────────────────────────────────────────────────────
-BASE_SPEED          = 0.05
-BOOST_DURATION      = 6.0
-BOOST_MULTIPLIER    = 3
-MAX_LIVES           = 3
-INVINCIBLE_DURATION = 2.0
-COIN_BOOST_COST     = 10
-COIN_BOOST_DURATION = 5.0
-BOSS_TRIGGER_TIME   = 60.0
-
-# ── Game objects ───────────────────────────────────────────────────────────────
+# ── Settings & game objects ────────────────────────────────────────────────────
+settings      = Settings()
 road          = Background(HEIGHT, WIDTH)
 player        = Player(HEIGHT, WIDTH)
 entityManager = EntityManager(HEIGHT, WIDTH)
@@ -40,10 +32,10 @@ head_ctrl     = HeadController()
 # "menu" | "tutorial" | "settings" | "playing" | "game_over"
 game_state        = "menu"
 MOVE_OFFSET       = 0.0
-SPEED             = BASE_SPEED
+SPEED             = settings.BASE_SPEED
 score             = 0
 high_scores       = []
-lives             = MAX_LIVES
+lives             = settings.MAX_LIVES
 invincible_timer  = 0.0
 boost_active      = False
 boost_timer       = 0.0
@@ -52,7 +44,6 @@ collected_coins   = 0
 coin_boost_active = False
 coin_boost_timer  = 0.0
 game_time         = 0.0    # total seconds played this run
-colorblind_mode   = 0   # 0=Off  1=Color-safe (yellow/blue)  2=Monochrome
 
 # ── Floaters (score / event pop-ups) ──────────────────────────────────────────
 _floaters = []   # [{text, color, x, y, timer}]
@@ -68,22 +59,22 @@ _vignette_surf  = None
 
 
 # ── Pixel font helpers ─────────────────────────────────────────────────────────
-# Place any .ttf pixel font (e.g. Minecraftia.ttf) in a fonts/ folder next to
-# main.py and set _PIXEL_FONT to that path for an authentic pixel look.
-_PIXEL_FONT = "fonts/PixelifySans.ttf"
+_PIXEL_FONT = settings.PIXEL_FONT
+
 
 def _font(size):
-    """Return a cached pixel/bitmap font rendered without antialiasing."""
+    """Return a cached font."""
     if size not in _fonts:
+        pygame.font.init()
         if _PIXEL_FONT:
             try:
-                _fonts[size] = pygame.font.Font(_PIXEL_FONT, size)
+                f = pygame.font.Font(_PIXEL_FONT, size)
+                f.render("A", True, (255, 255, 255))   # raises if bad file
+                _fonts[size] = f
             except Exception:
-                _fonts[size] = pygame.font.Font(None, size)
-        else:
-            # Fallback: pygame built-in bitmap font (already pixel-art at any size
-            # because we render with antialiasing=False below)
-            _fonts[size] = pygame.font.Font(None, size)
+                pass
+        if size not in _fonts:
+            _fonts[size] = pygame.font.SysFont(None, size)
     return _fonts[size]
 
 
@@ -93,7 +84,7 @@ def _px_text(surf, text, pos, size, color,
     outline=None auto-sizes to 1 or 2px based on font size.
     Returns (text_w, text_h)."""
     f        = _font(size)
-    rendered = f.render(str(text), False, color)   # False = no AA = pixel-crisp
+    rendered = f.render(str(text), True, color)
     rx, ry   = pos
     if center:
         rx -= rendered.get_width()  // 2
@@ -101,7 +92,7 @@ def _px_text(surf, text, pos, size, color,
 
     # Minecraft-style outline: draw black glyph in 8 directions, then main color
     ow = (max(1, size // 40) if outline is None else outline)
-    dark = f.render(str(text), False, (0, 0, 0))
+    dark = f.render(str(text), True, (0, 0, 0))
     for dx in range(-ow, ow + 1):
         for dy in range(-ow, ow + 1):
             if dx == 0 and dy == 0:
@@ -227,21 +218,22 @@ def on_key_down(key):
     elif key in (keys.RIGHT, keys.D):
         player.move_right()
     elif key in (keys.UP, keys.W):
-        if collected_coins >= COIN_BOOST_COST and not coin_boost_active:
-            collected_coins  -= COIN_BOOST_COST
+        if collected_coins >= settings.COIN_BOOST_COST and not coin_boost_active:
+            collected_coins  -= settings.COIN_BOOST_COST
             coin_boost_active = True
-            coin_boost_timer  = COIN_BOOST_DURATION
+            coin_boost_timer  = settings.COIN_BOOST_DURATION
             _floaters.append({'text': 'SPEED  x2 !', 'color': (80, 210, 255),
                                'x': WIDTH // 2, 'y': int(HEIGHT * 0.44), 'timer': 1.4})
 
     elif key in (keys.DOWN, keys.S):
-        if boss.active and not boss.defeated:
+        if boss.active and not boss.defeated and collected_coins > 0:
+            collected_coins -= 1
             speed_mult = 2.0 if coin_boost_active else 1.0
             boss.fire_player_shot(player.getLane(), speed_mult)
 
 
 def on_mouse_down(pos):
-    global game_state, colorblind_mode
+    global game_state
     if game_state == "menu":
         if   _btn('play').collidepoint(pos):     _start_game()
         elif _btn('tutorial').collidepoint(pos): game_state = "tutorial"
@@ -250,7 +242,7 @@ def on_mouse_down(pos):
         if _btn('back').collidepoint(pos):       game_state = "menu"
     elif game_state == "settings":
         if   _btn('back').collidepoint(pos):       game_state = "menu"
-        elif _btn('colorblind').collidepoint(pos): colorblind_mode = (colorblind_mode + 1) % 3
+        elif _btn('colorblind').collidepoint(pos): settings.colorblind_mode = (settings.colorblind_mode + 1) % 3
         elif _btn('headctrl').collidepoint(pos) and head_ctrl.available:
             head_ctrl.toggle()
     elif game_state == "game_over":
@@ -269,8 +261,8 @@ def update(dt):
     global _hit_flash_timer, game_time
 
     # Road always animates so menus have a live background
-    SPEED        = BASE_SPEED * (2.0 if coin_boost_active else 1.0)
-    MOVE_OFFSET += SPEED
+    SPEED        = settings.BASE_SPEED * (2.0 if coin_boost_active else 1.0)
+    MOVE_OFFSET += SPEED * dt * 60   # dt-corrected so speed stays constant at any FPS
     if MOVE_OFFSET >= 1.0:
         MOVE_OFFSET -= 1.0
     road.update(MOVE_OFFSET, dt, SPEED)
@@ -302,7 +294,8 @@ def update(dt):
         elif d ==  1: player.move_right()
         while head_ctrl.consume_jump():
             player.jump()
-        if head_ctrl.consume_shoot() and boss.active and not boss.defeated:
+        if head_ctrl.consume_shoot() and boss.active and not boss.defeated and collected_coins > 0:
+            collected_coins -= 1
             boss.fire_player_shot(player.getLane(),
                                   2.0 if coin_boost_active else 1.0)
 
@@ -311,8 +304,8 @@ def update(dt):
 
     if result == "dead":
         lives           -= 1
-        invincible_timer = INVINCIBLE_DURATION
-        _hit_flash_timer = INVINCIBLE_DURATION * 0.55
+        invincible_timer = settings.INVINCIBLE_DURATION
+        _hit_flash_timer = settings.INVINCIBLE_DURATION * 0.55
         player.trigger_hit()
         if lives <= 0:
             game_state = "game_over"
@@ -332,26 +325,26 @@ def update(dt):
 
     elif result == "boost":
         boost_active     = True
-        boost_timer      = BOOST_DURATION
-        score_multiplier = BOOST_MULTIPLIER
-        _floaters.append({'text': f'x{BOOST_MULTIPLIER}  BOOST !', 'color': (200, 80, 255),
+        boost_timer      = settings.BOOST_DURATION
+        score_multiplier = settings.BOOST_MULTIPLIER
+        _floaters.append({'text': f'x{settings.BOOST_MULTIPLIER}  BOOST !', 'color': (200, 80, 255),
                           'x': WIDTH // 2, 'y': int(HEIGHT * 0.44), 'timer': 1.2})
 
     score += int(10 * score_multiplier)
 
     # ── Boss ──────────────────────────────────────────────────────────────────
     game_time += dt
-    if not boss.active and not boss.defeated and game_time >= BOSS_TRIGGER_TIME:
+    if not boss.active and not boss.defeated and game_time >= settings.BOSS_TRIGGER_TIME:
         boss.activate()
         _floaters.append({'text': '! 404 AWAKENS !', 'color': (255, 50, 255),
                           'x': WIDTH // 2, 'y': int(HEIGHT * 0.38), 'timer': 2.8})
 
-    boss_result = boss.update(dt, player.getLane(), invincible_timer > 0)
+    boss_result = boss.update(dt, player.getLane(), invincible_timer > 0, player.getIsJumping())
 
     if boss_result == 'player_hit' and lives > 0:
         lives           -= 1
-        invincible_timer = INVINCIBLE_DURATION
-        _hit_flash_timer = INVINCIBLE_DURATION * 0.55
+        invincible_timer = settings.INVINCIBLE_DURATION
+        _hit_flash_timer = settings.INVINCIBLE_DURATION * 0.55
         player.trigger_hit()
         if lives <= 0:
             game_state = "game_over"
@@ -381,7 +374,7 @@ def reset():
     MOVE_OFFSET      = 0.0
     score            = 0
     game_state       = "playing"
-    lives            = MAX_LIVES
+    lives            = settings.MAX_LIVES
     collected_coins  = 0
     invincible_timer = 0.0
     game_time        = 0.0
@@ -401,7 +394,7 @@ def draw():
     road.draw(screen)
 
     if game_state == "playing":
-        boss.draw(screen, _px_text, _font, colorblind_mode)
+        boss.draw(screen, _px_text, _font, settings.colorblind_mode)
         entityManager.draw_bg(screen, 345)
         player.draw(screen)
         entityManager.draw_fg(screen, 345)
@@ -412,7 +405,7 @@ def draw():
         _draw_head_preview()
 
     elif game_state == "game_over":
-        boss.draw(screen, _px_text, _font, colorblind_mode)
+        boss.draw(screen, _px_text, _font, settings.colorblind_mode)
         entityManager.draw_bg(screen, 345)
         player.draw(screen)
         entityManager.draw_fg(screen, 345)
@@ -446,21 +439,21 @@ def _draw_hud():
     coin_y = pad + 114
     coin_r = int(HEIGHT * 0.039)
     _draw_coin_icon(surf, pad + coin_r, coin_y + coin_r, coin_r)
-    _px_text(surf, f" {collected_coins:02d}/{COIN_BOOST_COST}   UP = BOOST",
+    _px_text(surf, f" {collected_coins:02d}/{settings.COIN_BOOST_COST}   UP = BOOST",
              (pad + coin_r * 2 + 4, coin_y), 60, (255, 210, 55))
 
     bar_w  = int(WIDTH * 0.27)
     bar_h  = 15
     bar_y  = coin_y + 72
-    fill   = int(bar_w * min(1.0, collected_coins / COIN_BOOST_COST))
+    fill   = int(bar_w * min(1.0, collected_coins / settings.COIN_BOOST_COST))
     pygame.draw.rect(surf, (55, 44, 8),   (pad, bar_y, bar_w, bar_h))
     pygame.draw.rect(surf, (255, 210, 40),(pad, bar_y, fill,  bar_h))
     pygame.draw.rect(surf, (160, 130, 18),(pad, bar_y, bar_w, bar_h), 2)
 
     # Active boost labels — colors vary by accessibility mode
     boost_label_y = bar_y + bar_h + 21
-    if   colorblind_mode == 1: key_col, speed_col = (255, 165, 0),   ( 30, 100, 255)  # orange / blue
-    elif colorblind_mode == 2: key_col, speed_col = (240, 240, 240), (160, 160, 160)  # white / gray
+    if   settings.colorblind_mode == 1: key_col, speed_col = (255, 165, 0),   ( 30, 100, 255)  # orange / blue
+    elif settings.colorblind_mode == 2: key_col, speed_col = (240, 240, 240), (160, 160, 160)  # white / gray
     else:                      key_col, speed_col = (200,  80, 255), ( 80, 210, 255)  # purple / cyan
     if boost_active:
         secs = int(boost_timer) + 1
@@ -474,14 +467,14 @@ def _draw_hud():
 
     # Hearts (top-right)
     if _heart_img:
-        total_w = MAX_LIVES * hs + (MAX_LIVES - 1) * gap
+        total_w = settings.MAX_LIVES * hs + (settings.MAX_LIVES - 1) * gap
         sx      = WIDTH - total_w - pad
-        for i in range(MAX_LIVES):
+        for i in range(settings.MAX_LIVES):
             img = _heart_img if i < lives else _dark_heart_img
             surf.blit(img, (sx + i * (hs + gap), pad))
         # Accessibility modes add a numeric label so count is never color-only
-        if colorblind_mode > 0:
-            _px_text(surf, f"LIVES  {lives}/{MAX_LIVES}",
+        if settings.colorblind_mode > 0:
+            _px_text(surf, f"LIVES  {lives}/{settings.MAX_LIVES}",
                      (WIDTH - total_w // 2 - pad, pad + hs + 6),
                      28, (255, 255, 255), center=True)
 
@@ -494,11 +487,11 @@ def _draw_floaters():
 
 def _draw_hit_flash():
     if _hit_flash_timer > 0:
-        a     = int(110 * min(1.0, _hit_flash_timer / (INVINCIBLE_DURATION * 0.55)))
+        a     = int(110 * min(1.0, _hit_flash_timer / (settings.INVINCIBLE_DURATION * 0.55)))
         flash = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         # Accessibility flash colours
-        if   colorblind_mode == 1: flash.fill((0,   80, 210, a))   # blue
-        elif colorblind_mode == 2: flash.fill((220, 220, 220, a))  # white
+        if   settings.colorblind_mode == 1: flash.fill((0,   80, 210, a))   # blue
+        elif settings.colorblind_mode == 2: flash.fill((220, 220, 220, a))  # white
         else:                      flash.fill((210,   0,   0, a))  # red
         screen.surface.blit(flash, (0, 0))
 
@@ -635,10 +628,10 @@ def _draw_settings():
     rows = [
         ("Move lane",    "Left / Right Arrow"),
         ("Jump",         "SPACE   (double jump)"),
-        ("Coin boost",   f"UP Arrow  —  costs {COIN_BOOST_COST} coins"),
+        ("Coin boost",   f"UP Arrow  —  costs {settings.COIN_BOOST_COST} coins"),
         ("", ""),
-        ("Boost dur.",   f"{COIN_BOOST_DURATION:.0f}s  speed x2"),
-        ("Key boost",    f"x{BOOST_MULTIPLIER} score  for  {BOOST_DURATION:.0f}s"),
+        ("Boost dur.",   f"{settings.COIN_BOOST_DURATION:.0f}s  speed x2"),
+        ("Key boost",    f"x{settings.BOOST_MULTIPLIER} score  for  {settings.BOOST_DURATION:.0f}s"),
         ("Day cycle",    "60s  per  day / night"),
         ("", ""),
         ("Restart",      "SPACE on Game Over screen"),
@@ -674,10 +667,10 @@ def _draw_settings():
         "White / Grey  +  shapes  +  numeric lives",
     ]
     _CB_COLS   = [(160, 160, 160), (255, 200, 50), (220, 220, 220)]
-    _draw_button(surf, _btn('colorblind'), _CB_LABELS[colorblind_mode], 22,
-                 hover=(colorblind_mode > 0))
-    _px_text(surf, _CB_DESCS[colorblind_mode],
-             (cx, _btn('colorblind').bottom + 6), 15, _CB_COLS[colorblind_mode], center=True)
+    _draw_button(surf, _btn('colorblind'), _CB_LABELS[settings.colorblind_mode], 22,
+                 hover=(settings.colorblind_mode > 0))
+    _px_text(surf, _CB_DESCS[settings.colorblind_mode],
+             (cx, _btn('colorblind').bottom + 6), 15, _CB_COLS[settings.colorblind_mode], center=True)
 
     _draw_button(surf, _btn('back'), "BACK", 24)
     _px_text(surf, "ESC or SPACE to go back",
