@@ -1,4 +1,5 @@
 import os
+import sys
 import pygame
 import math
 import random
@@ -143,15 +144,25 @@ def _btn(name):
     bw  = int(WIDTH  * 0.17)
     bh  = int(HEIGHT * 0.073)
     gap = int(bh * 0.38)
-    my  = HEIGHT // 2 - bh // 2
+    my  = int(HEIGHT * 0.42)
     pos = {
         'play':     (cx - bw // 2, my),
         'tutorial': (cx - bw // 2, my +  bh + gap),
         'settings': (cx - bw // 2, my + (bh + gap) * 2),
+        'exit':     (cx - bw // 2, my + (bh + gap) * 3),
         'back':        (cx - bw // 2, int(HEIGHT * 0.84)),
         'headctrl':    (cx - bw // 2, int(HEIGHT * 0.63)),
         'colorblind':  (cx - bw // 2, int(HEIGHT * 0.73)),
     }
+    
+    if name.startswith('go_'):
+        go_bw = int(WIDTH * 0.16)
+        go_gap = int(WIDTH * 0.015)
+        if name == 'go_play':     return pygame.Rect(cx - go_bw - go_gap, int(HEIGHT * 0.76), go_bw, bh)
+        elif name == 'go_settings': return pygame.Rect(cx + go_gap, int(HEIGHT * 0.76), go_bw, bh)
+        elif name == 'go_menu':   return pygame.Rect(cx - go_bw - go_gap, int(HEIGHT * 0.85), go_bw, bh)
+        elif name == 'go_exit':   return pygame.Rect(cx + go_gap, int(HEIGHT * 0.85), go_bw, bh)
+            
     bx, by = pos.get(name, (0, 0))
     return pygame.Rect(bx, by, bw, bh)
 
@@ -204,8 +215,10 @@ def on_key_down(key):
     global game_state, coin_boost_active, coin_boost_timer, collected_coins
 
     if key == keys.ESCAPE:
-        if game_state in ("tutorial", "settings"):
+        if game_state in ("tutorial", "settings", "playing", "game_over"):
             game_state = "menu"
+        elif game_state == "menu":
+            sys.exit(0)
         return
 
     if key == keys.SPACE:
@@ -247,6 +260,7 @@ def on_mouse_down(pos):
         if   _btn('play').collidepoint(pos):     _start_game()
         elif _btn('tutorial').collidepoint(pos): game_state = "tutorial"
         elif _btn('settings').collidepoint(pos): game_state = "settings"
+        elif _btn('exit').collidepoint(pos):     sys.exit(0)
     elif game_state == "tutorial":
         if _btn('back').collidepoint(pos):       game_state = "menu"
     elif game_state == "settings":
@@ -255,7 +269,10 @@ def on_mouse_down(pos):
         elif _btn('headctrl').collidepoint(pos) and head_ctrl.available:
             head_ctrl.toggle()
     elif game_state == "game_over":
-        if _btn('back').collidepoint(pos):       reset()
+        if _btn('go_play').collidepoint(pos):       reset()
+        elif _btn('go_menu').collidepoint(pos):     game_state = "menu"
+        elif _btn('go_settings').collidepoint(pos): game_state = "settings"
+        elif _btn('go_exit').collidepoint(pos):     sys.exit(0)
 
 
 # ── Core game loop ────────────────────────────────────────────────────────────
@@ -571,6 +588,7 @@ def _draw_menu():
     _draw_button(surf, _btn('play'),     "  PLAY  ",  30)
     _draw_button(surf, _btn('tutorial'), "TUTORIAL",  24)
     _draw_button(surf, _btn('settings'), "SETTINGS",  24)
+    _draw_button(surf, _btn('exit'),     "  EXIT  ",  24)
 
     _px_text(surf, "SPACE  or  click  PLAY  to  start",
              (cx, int(HEIGHT * 0.91)), 18, c['text_dim'], center=True)
@@ -729,12 +747,15 @@ def _draw_game_over():
     for i, s in enumerate(high_scores[:5]):
         col = c['hud_score'] if i == 0 else c['text_main']
         _px_text(surf, f"# {i+1}   {s:07d}",
-                 (cx, int(HEIGHT * 0.503) + i * int(HEIGHT * 0.057)),
+                 (cx, int(HEIGHT * 0.490) + i * int(HEIGHT * 0.048)),
                  22, col, center=True)
 
-    _draw_button(surf, _btn('back'), "PLAY  AGAIN", 24)
+    _draw_button(surf, _btn('go_play'),     "PLAY AGAIN", 22)
+    _draw_button(surf, _btn('go_settings'), "SETTINGS", 22)
+    _draw_button(surf, _btn('go_menu'),     "MAIN MENU", 22)
+    _draw_button(surf, _btn('go_exit'),     "EXIT GAME", 22)
     _px_text(surf, "SPACE to restart",
-             (cx, int(HEIGHT * 0.92)), 18, c['text_dim'], center=True)
+             (cx, int(HEIGHT * 0.94)), 18, c['text_dim'], center=True)
 
 
 pgzrun.go()
