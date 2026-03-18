@@ -1,6 +1,3 @@
-# create player movement here
-# have an animation in here
-
 import pygame
 from pygame import Rect
 from Classes.AnimationManager import AnimationManager
@@ -9,26 +6,29 @@ from Classes.AnimationManager import AnimationManager
 class Player:
 
     def __init__(self, HEIGHT, WIDTH):
-        # screen variables:
         self.HEIGHT = HEIGHT
         self.WIDTH = WIDTH
 
-        # player looks:
         self.player_width = WIDTH * 0.04
         self.player_height = self.player_width * 1.5
-        self.tshirt = (255, 0, 0)
-        self.skin = (255, 200, 200)
 
-        # positioning
-        self.current_lane = 1  # 0 for left, 1 for middle and 2 for right
-        self.y_offset = 0  # current height
-        self.y_velocity = 0  # current vertical speed
+        self.current_lane = 1
+        self._visual_lane = 1.0   # float, lerps toward current_lane for smooth movement
+        self.y_offset = 0
+        self.y_velocity = 0
         self.gravity = -1.5
         self.jump_power = 30
-        self.is_Jumping = False  # no double jump check
+        self.is_Jumping = False
+        self.jumps_remaining = 2  # double-jump: 2 jumps per grounded state
         self.base_y = HEIGHT * 0.87
 
-        # animation
+        # max jump height for shadow ratio
+        self._max_jump_h = (self.jump_power ** 2) / (2 * abs(self.gravity))  # ~300px
+
+        # hit flash
+        self.hit_timer = 0.0
+        self.hit_duration = 0.5  # seconds of red tint after being hit
+
         self.anim_manager = AnimationManager("images/Character3SpriteSheet.png", 4)
 
     def move_left(self):
@@ -40,102 +40,78 @@ class Player:
             self.current_lane += 1
 
     def jump(self):
-        if not self.is_Jumping:
+        if self.jumps_remaining > 0:
             self.is_Jumping = True
             self.y_velocity = self.jump_power
+            self.jumps_remaining -= 1
 
-    def update(self):
-        # update animation ticks
-        self.anim_manager.update(1 / 60)
+    def trigger_hit(self):
+        self.hit_timer = self.hit_duration
 
-        # gravity when jumping
+    def update(self, dt=1/60):
+        self.anim_manager.update(dt)
+        # Smooth lane slide — frame-rate independent lerp
+        _t = 1.0 - (0.72 ** (dt * 60))
+        self._visual_lane += (self.current_lane - self._visual_lane) * _t
+
+        if self.hit_timer > 0:
+            self.hit_timer -= 1 / 60
+
         if self.is_Jumping:
             self.y_offset += self.y_velocity
             self.y_velocity += self.gravity
 
-            # reset when landed
             if self.y_offset <= 0:
                 self.y_offset = 0
                 self.is_Jumping = False
                 self.y_velocity = 0
+                self.jumps_remaining = 2  # reset on landing
+
+    def _get_draw_x(self):
+        center_x      = self.WIDTH / 2
+        horizon_y     = self.HEIGHT * 0.4
+        road_bottom_w = self.WIDTH * 0.6
+        road_top_w    = self.WIDTH * 0.1
+        depth         = (self.base_y - horizon_y) / (self.HEIGHT - horizon_y)
+        current_road_w = road_top_w + (road_bottom_w - road_top_w) * depth
+        lane_width    = current_road_w / 3
+        # Use _visual_lane (smooth float) instead of integer current_lane
+        return center_x + (self._visual_lane - 1) * lane_width
+
+    def get_screen_x(self):
+        return self._get_draw_x()
 
     def draw(self, screen):
-        # center_x = self.WIDTH / 2
-        #
-        # # temp variables
-        # horizon_y = self.HEIGHT * 0.4
-        # road_bottom_width = self.WIDTH * 0.6
-        # road_top_width = self.WIDTH * 0.1
-        #
-        # depth = (self.base_y - horizon_y) / (self.HEIGHT - horizon_y)
-        # current_road_width = road_top_width + (road_bottom_width - road_top_width) * depth
-        #
-        # # lane width and positions
-        # lane_width = current_road_width / 3
-        # lane_positions = [
-        #     center_x - lane_width,
-        #     center_x,
-        #     center_x + lane_width
-        # ]
-        #
-        # # Get our exact X depending on the lane we are in
-        # draw_x = lane_positions[self.current_lane]
-        #
-        # # Our Y position is the base_y minus any jump offset
-        # draw_y = self.base_y - self.y_offset
-        #
-        # # Draw the body (Rectangle)
-        # # Center the rectangle horizontally on draw_x, and sit the bottom on draw_y
-        # body_rect = Rect(draw_x - (self.player_width / 2), draw_y - self.player_height, self.player_width, self.player_height)
-        # screen.draw.filled_rect(body_rect, self.tshirt)
-        #
-        # # Draw the head (Circle) on top of the body
-        # head_radius = self.player_width / 1.5
-        # head_y = draw_y - self.player_height - (head_radius * 0.5)
-        #
-        # # Pygame zero's filled_circle takes an (x,y) tuple for center and a radius
-        # screen.draw.filled_circle((draw_x, head_y), head_radius, self.skin)
-
-        # Define the exact X position for each of the 3 lanes
-        # The center lane is the exact middle of the screen
-        center_x = self.WIDTH / 2
-
-        # We need to know the width of the road at the player's base_y.
-        # Since base_y is heavily towards the bottom, the road is wide here.
-        horizon_y = self.HEIGHT * 0.4
-        road_bottom_w = self.WIDTH * 0.6
-        road_top_w = self.WIDTH * 0.1
-
-        # Calculate how far down the screen the player is (percentage)
-        depth = (self.base_y - horizon_y) / (self.HEIGHT - horizon_y)
-        current_road_w = road_top_w + (road_bottom_w - road_top_w) * depth
-
-        # Calculate lane positions
-        lane_width = current_road_w / 3
-        # Left lane center, Middle lane center, Right lane center
-        lane_positions = [
-            center_x - lane_width,
-            center_x,
-            center_x + lane_width
-        ]
-
-        # Get our exact X depending on the lane we are in
-        draw_x = lane_positions[self.current_lane]
-
-        # Our Y position is the base_y minus any jump offset
+        draw_x = self._get_draw_x()
         draw_y = self.base_y - self.y_offset
 
-        # Get frame
-        frame = self.anim_manager.get_current_image()
+        # --- Shadow on the ground ---
+        ratio = max(0.15, 1.0 - self.y_offset / self._max_jump_h)
+        shadow_w = max(8, int(self.player_width * 1.4 * ratio))
+        shadow_h = max(3, int(shadow_w * 0.22))
+        shadow_alpha = int(140 * ratio)
 
-        # Scale the frame statically
+        shadow_surf = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow_surf, (0, 0, 0, shadow_alpha), (0, 0, shadow_w, shadow_h))
+        screen.surface.blit(shadow_surf, (int(draw_x - shadow_w / 2), int(self.base_y - shadow_h // 2)))
+
+        # --- Sprite ---
+        frame = self.anim_manager.get_current_image()
         scaled_frame = pygame.transform.scale(frame, (int(self.player_width * 1.5), int(self.player_height * 1.5)))
 
-        frame_rect = scaled_frame.get_rect()
-        frame_rect.centerx = draw_x
-        frame_rect.bottom = draw_y
+        # Red tint when hit (adds to red channel only; keeps transparency intact)
+        if self.hit_timer > 0:
+            tinted = scaled_frame.copy()
+            strength = int(160 * (self.hit_timer / self.hit_duration))
+            overlay = pygame.Surface(tinted.get_size(), pygame.SRCALPHA)
+            overlay.fill((strength, 0, 0, 0))
+            tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+            scaled_frame = tinted
 
-        # Blit using Pygame zero's surface directly
+        frame_rect = scaled_frame.get_rect()
+        frame_rect.centerx = int(draw_x)
+        frame_rect.bottom = int(draw_y)
+
         screen.surface.blit(scaled_frame, frame_rect.topleft)
 
     def getLane(self):
@@ -145,17 +121,10 @@ class Player:
         return self.is_Jumping
 
     def reset(self):
-        self.current_lane = 1
-        self.y_offset = 0
-        self.y_velocity = 0
-        self.is_Jumping = False
-
-
-
-
-
-
-
-
-
-
+        self.current_lane  = 1
+        self._visual_lane  = 1.0
+        self.y_offset      = 0
+        self.y_velocity    = 0
+        self.is_Jumping    = False
+        self.jumps_remaining = 2
+        self.hit_timer     = 0.0
