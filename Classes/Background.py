@@ -116,6 +116,7 @@ class Background:
 
         # ── Side trees (sprite-based, z-scrolling) ──
         self._tree_imgs = _load_tree_images(_TREE_PATHS)
+        self._dark_mult_surf = pygame.Surface((1, 1))   # reused scratch surface for darkening
         # 4 trees per side = 8 total, spaced ~700 z units apart — sparse, not cluttered
         TREES_PER_SIDE = 4
         TREE_SPACING   = 3000 // TREES_PER_SIDE  # ~750
@@ -167,8 +168,8 @@ class Background:
                 b['x'] = self.WIDTH + random.randint(0, 260)
                 b['y'] = random.uniform(self.HEIGHT * 0.06, self.HEIGHT * 0.33)
 
-        # Scroll side trees — same z-speed formula as entities
-        z_step = (3000 / 15) * ground_speed   # world z units per frame
+        # Scroll side trees — same z-speed formula as entities, dt-corrected
+        z_step = (3000 / 15) * ground_speed * dt * 60
         for t in self._side_trees:
             t['z'] -= z_step
             if t['z'] < 30:   # tree has passed the camera
@@ -370,9 +371,10 @@ class Background:
             # Night darkening (RGB mult — keeps transparency clean)
             if df < 0.85:
                 factor = max(0, int(255 * min(1.0, df * 1.2)))
-                dark_mult = pygame.Surface((tw, th))
-                dark_mult.fill((factor, factor, min(255, factor + 15)))
-                scaled.blit(dark_mult, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
+                if self._dark_mult_surf.get_size() != (tw, th):
+                    self._dark_mult_surf = pygame.Surface((tw, th))
+                self._dark_mult_surf.fill((factor, factor, min(255, factor + 15)))
+                scaled.blit(self._dark_mult_surf, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
 
             screen.surface.blit(scaled, (tx - tw // 2, ty))
 
@@ -419,9 +421,10 @@ class Background:
             # Night darkening — BLEND_RGB_MULT only touches RGB, alpha stays intact
             if df < 0.85:
                 factor = max(0, int(255 * min(1.0, df * 1.2)))
-                dark_mult = pygame.Surface((tw, th))
-                dark_mult.fill((factor, factor, min(255, factor + 15)))
-                scaled.blit(dark_mult, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
+                if self._dark_mult_surf.get_size() != (tw, th):
+                    self._dark_mult_surf = pygame.Surface((tw, th))
+                self._dark_mult_surf.fill((factor, factor, min(255, factor + 15)))
+                scaled.blit(self._dark_mult_surf, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
 
             # Fade out when close to camera — BLEND_RGBA_MULT multiplies per-pixel
             # alpha so transparent areas remain transparent throughout the fade

@@ -79,7 +79,7 @@ class EntityManager:
         return y, scale, p
 
     def update(self, dt, playerLane, playerIsJumping, ground_speed, playerIsInvincible=False):
-        self.speed = (3000 / 15) * (ground_speed / dt)
+        self.speed = (3000 / 15) * ground_speed * 60   # per-second rate; * dt below = dt-corrected
         self.time += dt
 
         self.spawn_timer -= dt
@@ -100,8 +100,9 @@ class EntityManager:
                     return "coin"
 
                 elif o["type"] == "boost_key":
-                    o["collected"] = True
-                    return "boost"
+                    if not playerIsJumping:
+                        o["collected"] = True
+                        return "boost"
 
                 elif not playerIsInvincible:
                     # both train and barrier are avoidable by jumping
