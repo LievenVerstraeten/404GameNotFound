@@ -53,6 +53,9 @@ class HeadController:
         self._last_nod_time = 0.0
         self._in_mouth_open = False
 
+        self._head_nx = 0.5   # latest normalized head-X (0=left, 1=right)
+        self._head_ny = 0.5   # latest normalized head-Y (0=top,  1=bottom)
+
         self._thread  = None
         self._running = False
 
@@ -112,6 +115,13 @@ class HeadController:
         """Return a copy of the latest annotated frame (numpy RGB) or None."""
         with self._lock:
             return None if self._preview_frame is None else self._preview_frame.copy()
+
+    def get_head_norm_pos(self):
+        """Return (nx, ny) normalized 0-1 head position, or None if not tracking."""
+        if not self.enabled:
+            return None
+        with self._lock:
+            return (self._head_nx, self._head_ny)
 
     # ── Background thread ─────────────────────────────────────────────────────
 
@@ -210,8 +220,8 @@ class HeadController:
             mouth_gap = 0.0
 
             if lm is not None:
-                nose_x, pitch, mouth_gap = self._compute_pose(lm)
-                self._update_events(nose_x, pitch, mouth_gap)
+                nose_x, nose_y, pitch, mouth_gap = self._compute_pose(lm)
+                self._update_events(nose_x, nose_y, pitch, mouth_gap)
 
             annotated = self._annotate(frame, lm, nose_x, pitch, mouth_gap, cv2)
             rgb_ann   = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
@@ -237,15 +247,18 @@ class HeadController:
 
         fcy    = (forehead.y + chin.y) / 2
         nose_x = nose.x                            # 0=left … 1=right (mirrored)
+        nose_y = nose.y                            # 0=top  … 1=bottom (raw frame)
         pitch  = (nose.y - fcy) / face_h           # + = head down
         mouth  = abs(upper_lip.y - lower_lip.y) / face_h
-        return nose_x, pitch, mouth
+        return nose_x, nose_y, pitch, mouth
 
     # ── Event generation ──────────────────────────────────────────────────────
 
-    def _update_events(self, nose_x, pitch, mouth_gap):
+    def _update_events(self, nose_x, nose_y, pitch, mouth_gap):
         now = time.monotonic()
         with self._lock:
+            self._head_nx = nose_x
+            self._head_ny = nose_y
             # ── Lane zone (3-lane position mapping) ──────────────────────────
             z = self._current_zone
             if   z == 1 and nose_x < LANE_BOUNDARY_L - LANE_HYSTERESIS: z = 0
