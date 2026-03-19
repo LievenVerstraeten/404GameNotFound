@@ -345,9 +345,9 @@ def draw():
 
     if game_state == "playing":
         boss.draw(screen, ui.px_text, ui.font, settings.colorblind_mode)
-        entityManager.draw_bg(screen, 345)
+        entityManager.draw_bg(screen, 345, settings.colorblind_mode)
         player.draw(screen)
-        entityManager.draw_fg(screen, 345)
+        entityManager.draw_fg(screen, 345, settings.colorblind_mode)
         screen.surface.blit(ui.get_vignette(), (0, 0))
         renderer.draw_floaters(screen.surface, _floaters)
         renderer.draw_hit_flash(screen.surface, _hit_flash_timer)
@@ -358,9 +358,9 @@ def draw():
 
     elif game_state == "game_over":
         boss.draw(screen, ui.px_text, ui.font, settings.colorblind_mode)
-        entityManager.draw_bg(screen, 345)
+        entityManager.draw_bg(screen, 345, settings.colorblind_mode)
         player.draw(screen)
-        entityManager.draw_fg(screen, 345)
+        entityManager.draw_fg(screen, 345, settings.colorblind_mode)
         screen.surface.blit(ui.get_vignette(), (0, 0))
         renderer.draw_game_over(screen.surface, score, collected_coins, settings.high_scores)
 
@@ -378,7 +378,6 @@ def draw():
 
     if game_state != "playing":
         ui.draw_head_cursor(screen.surface, _hcursor_pos)
-    ui.apply_colorblind_filter(screen.surface)
 
 
 pgzrun.go()

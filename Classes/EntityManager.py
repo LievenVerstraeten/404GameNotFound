@@ -150,11 +150,12 @@ class EntityManager:
 
                 self._draw_shadow(screen, x, gnd_y, base_w)
 
+                if colorblind > 0:
+                    hl = (255,255,255) if colorblind==4 else (250,60,60) if colorblind==3 else (255,200,50)
+                    pad = max(2, int(8 * scale))
+                    pygame.draw.rect(screen.surface, hl, (int(x - base_w / 2) - pad, gnd_y - base_h - pad, base_w + pad*2, base_h + pad*2), max(2, int(3*scale)))
+
                 if self._train_img is not None:
-                    if colorblind > 0:
-                        hl = (255,255,255) if colorblind==4 else (250,60,60) if colorblind==3 else (255,200,50)
-                        pad = max(2, int(8 * scale))
-                        pygame.draw.rect(screen.surface, hl, (int(x - base_w / 2) - pad, gnd_y - base_h - pad, base_w + pad*2, base_h + pad*2), max(2, int(3*scale)))
                     scaled = pygame.transform.scale(self._train_img, (base_w, base_h))
                     screen.surface.blit(scaled, (int(x - base_w / 2), gnd_y - base_h))
                 else:
@@ -170,11 +171,12 @@ class EntityManager:
 
                 self._draw_shadow(screen, x, gnd_y, base_w)
 
+                if colorblind > 0:
+                    hl = (255,255,255) if colorblind==4 else (250,60,60) if colorblind==3 else (255,200,50)
+                    pad = max(2, int(8 * scale))
+                    pygame.draw.rect(screen.surface, hl, (int(x - base_w / 2) - pad, gnd_y - base_h - pad, base_w + pad*2, base_h + pad*2), max(2, int(3*scale)))
+
                 if self._barrier_img is not None:
-                    if colorblind > 0:
-                        hl = (255,255,255) if colorblind==4 else (250,60,60) if colorblind==3 else (255,200,50)
-                        pad = max(2, int(8 * scale))
-                        pygame.draw.rect(screen.surface, hl, (int(x - base_w / 2) - pad, gnd_y - base_h - pad, base_w + pad*2, base_h + pad*2), max(2, int(3*scale)))
                     scaled = pygame.transform.scale(self._barrier_img, (base_w, base_h))
                     screen.surface.blit(scaled, (int(x - base_w / 2), gnd_y - base_h))
                 else:
